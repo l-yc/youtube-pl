@@ -11,6 +11,7 @@ class UI:
     def __init__(self, stdscr):
         if stdscr is not None:
             self.stdscr = stdscr
+        self.quit = False
 
     def setup(self):
         if self.stdscr is None:
@@ -39,7 +40,7 @@ class UI:
                                       result.duration if result.resultType == "video" else result.resultType)
 
     def format_stream(self, idx, stream):
-        return "{:2}: {} [{}]".format(idx,idx, stream.mediatype, stream.quality)
+        return "{:2}: {} [{}]".format(idx, stream.mediatype, stream.quality)
 
     def format_time(self, t):
         t //= 1000
@@ -52,31 +53,17 @@ class UI:
                                      self.format_time(player.get_length()),
                                      player.get_state())
 
-    def main(self):
-        self.stdscr.clear()
+    def play(self, video, index=None, playlist=None):
+        ## -- stream --
+        #self.stdscr.clear()
+        #self.stdscr.border(0)
+        #self.stdscr.addstr(5, 5, "Video: " + video.title, curses.A_BOLD)
+        #for idx, stream in enumerate(video.streams):
+        #    self.stdscr.addstr(7+idx, 5, self.format_stream(idx, stream), curses.A_NORMAL)
 
-        # -- Perform an action with Screen --
-        self.stdscr.border(0)
-        self.stdscr.addstr(5, 5, 'Welcome to youtube-pl!', curses.A_BOLD)
-
-        # -- search --
-        query = self.input(curses.LINES-5, 5, "Search:")
-        search = uyts.Search(query)
-
-        self.stdscr.clear()
-        for idx, result in enumerate(search.results):
-            self.stdscr.addstr(7+idx, 5, self.format_result(idx, result), curses.A_NORMAL)
-
-        idx = int(self.input(curses.LINES-5, 5, "Select video:"))
-        video_url = "https://www.youtube.com/watch?v=" + search.results[idx].id
-        video = pafy.new(video_url)
-
-        self.stdscr.clear()
-        for idx, stream in enumerate(video.streams):
-            self.stdscr.addstr(7+idx, 5, self.format_stream(idx, stream), curses.A_NORMAL)
-
-        idx = int(self.input(curses.LINES-5, 5, "Select stream:"))
-        stream = video.streams[idx]
+        #idx = int(self.input(curses.LINES-5, 5, "Select stream:"))
+        #stream = video.streams[idx]
+        stream = video.getbest()
 
         #import os
         #os.environ['VLC_VERBOSE'] = '-2'
@@ -95,6 +82,11 @@ class UI:
             self.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
             self.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
             self.stdscr.addstr(7, 5, self.progress(player), curses.A_NORMAL)
+            if playlist is not None:
+                for idx, p in enumerate(playlist['items']):
+                    if idx == 8:
+                        break
+                    self.stdscr.addstr(9+idx, 5, p['pafy'].title, (curses.A_BOLD if index == idx else curses.A_NORMAL))
             self.stdscr.refresh()
 
             try:
@@ -111,9 +103,39 @@ class UI:
 
         player.stop()
 
+    def main(self):
+        self.stdscr.clear()
+
+        # -- search --
+        self.stdscr.border(0)
+        self.stdscr.addstr(5, 5, "Welcome to youtube-pl!", curses.A_BOLD)
+        query = self.input(curses.LINES-5, 5, "Search:")
+        if query == b"q":
+            self.quit = True
+            return
+        search = uyts.Search(query)
+
+        # -- video --
+        self.stdscr.clear()
+        self.stdscr.border(0)
+        self.stdscr.addstr(5, 5, b"Search: " + query, curses.A_BOLD)
+        for idx, result in enumerate(search.results):
+            self.stdscr.addstr(7+idx, 5, self.format_result(idx, result), curses.A_NORMAL)
+
+        idx = int(self.input(curses.LINES-5, 5, "Select video:"))
+        if search.results[idx].resultType == 'video':
+            url = "https://www.youtube.com/watch?v=" + search.results[idx].id
+            video = pafy.new(url)
+            self.play(video)
+        elif search.results[idx].resultType == 'playlist':
+            url = "https://www.youtube.com/playlist?list=" + search.results[idx].id
+            playlist = pafy.get_playlist(url)
+            for idx, p in enumerate(playlist['items']):
+                self.play(p['pafy'], index=idx, playlist=playlist)
+
     def run(self):
         self.setup()
-        while True:
+        while not self.quit:
             self.main()
         self.cleanup()
 
