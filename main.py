@@ -7,6 +7,150 @@ import time
 
 import curses
 
+import enum
+
+class Scene:
+    def __init__(self, UI):
+        self.ui = UI
+
+    # TODO parse a user input
+    def parse(self, s):
+        pass
+
+    """
+    Executes scene logic
+    EXPECTS= args: tuple
+    RETURNS= status: string
+    """
+    def play(self, args):
+        pass
+
+class WelcomeScene(Scene):
+    def play(self, args):
+        self.ui.stdscr.clear()
+        # -- search --
+        self.ui.stdscr.border(0)
+        self.ui.stdscr.addstr(5, 5, "Welcome to youtube-pl!", curses.A_BOLD)
+        query = self.ui.input(curses.LINES-5, 5, "Search:")
+        if query == b"q":
+            return State.EXIT, ()
+        search = uyts.Search(query)
+        return State.SELECT_MEDIA, (query, search,)
+
+class SelectMediaScene(Scene):
+    def format_result(self, idx, result):
+        return "{:2}: {} [{}]".format(idx,
+                                      result.title,
+                                      result.duration if result.resultType == "video" else result.resultType)
+    def play(self, args):
+        query = args[0]
+        search = args[1]
+
+        self.ui.stdscr.clear()
+        # -- video --
+        self.ui.stdscr.border(0)
+        self.ui.stdscr.addstr(5, 5, b"Search: " + query, curses.A_BOLD)
+        for idx, result in enumerate(search.results):
+            self.ui.stdscr.addstr(7+idx, 5, self.format_result(idx, result), curses.A_NORMAL)
+
+        idx = int(self.ui.input(curses.LINES-5, 5, "Select video:"))
+        media = search.results[idx] 
+        return State.PLAY_MEDIA, (media,)
+
+class PlayMediaScene(Scene):
+    def format_stream(self, idx, stream):
+        return "{:2}: {} [{}]".format(idx, stream.mediatype, stream.quality)
+
+    def format_time(self, t):
+        t //= 1000
+        mm = t//60
+        ss = t%60
+        return "{:02}:{:02}".format(mm,ss)
+
+    def progress(self, player):
+        return "{} / {} [{}]".format(self.format_time(player.get_time()), 
+                                     self.format_time(player.get_length()),
+                                     player.get_state())
+
+    def playVideo(self, video, index=None, playlist=None):
+        ## -- stream --
+        #self.ui.stdscr.clear()
+        #self.ui.stdscr.border(0)
+        #self.ui.stdscr.addstr(5, 5, "Video: " + video.title, curses.A_BOLD)
+        #for idx, stream in enumerate(video.streams):
+        #    self.ui.stdscr.addstr(7+idx, 5, self.format_stream(idx, stream), curses.A_NORMAL)
+
+        #idx = int(self.ui.input(curses.LINES-5, 5, "Select stream:"))
+        #stream = video.streams[idx]
+        stream = video.getbest()
+
+        #import os
+        #os.environ['VLC_VERBOSE'] = '-2'
+        instance = vlc.Instance("--vout=dummy")
+        #with open("vlc.log", "w") as f:
+        #    instance.log_set_file(f)
+        instance.log_unset()
+        player = instance.media_player_new()
+        media = instance.media_new(stream.url)
+        player.set_media(media)
+        player.play()
+
+        return_state = None
+        curses.halfdelay(10)    # blocks for 1s
+        while player.get_state() != vlc.State.Ended:
+            self.ui.stdscr.clear()
+            self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
+            self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
+            self.ui.stdscr.addstr(7, 5, self.progress(player), curses.A_NORMAL)
+            if playlist is not None:
+                for idx, p in enumerate(playlist['items']):
+                    if idx == 8:
+                        break
+                    self.ui.stdscr.addstr(9+idx, 5, p['pafy'].title, (curses.A_BOLD if index == idx else curses.A_NORMAL))
+            self.ui.stdscr.refresh()
+
+            try:
+                ch = self.ui.stdscr.getch()
+                if ch == ord('q'):
+                    return_state = State.WELCOME
+                    break
+                elif ch == ord(' '):
+                    if player.get_state() != vlc.State.Paused:
+                        player.pause()
+                    else:
+                        player.play()
+            except:
+                pass
+
+        player.stop()
+        return return_state
+
+    def play(self, args):
+        media = args[0]
+        if media.resultType == 'video':
+            url = "https://www.youtube.com/watch?v=" + media.id
+            video = pafy.new(url)
+            return_state = self.playVideo(video)
+        elif media.resultType == 'playlist':
+            url = "https://www.youtube.com/playlist?list=" + media.id
+            playlist = pafy.get_playlist(url)
+            for idx, p in enumerate(playlist['items']):
+                return_state = self.playVideo(p['pafy'], index=idx, playlist=playlist)
+                if return_state is not None:
+                    break
+
+        if return_state is None:
+            return_state = State.WELCOME
+
+        return return_state, ()
+
+@enum.unique
+class State(enum.Enum):
+    EXIT = enum.auto()
+    WELCOME = enum.auto()
+    SELECT_MEDIA = enum.auto()
+    PLAY_MEDIA = enum.auto()
+
 class UI:
     def __init__(self, stdscr):
         if stdscr is not None:
@@ -34,111 +178,26 @@ class UI:
         curses.noecho()
         return val
 
-    def format_result(self, idx, result):
-        return "{:2}: {} [{}]".format(idx,
-                                      result.title,
-                                      result.duration if result.resultType == "video" else result.resultType)
-
-    def format_stream(self, idx, stream):
-        return "{:2}: {} [{}]".format(idx, stream.mediatype, stream.quality)
-
-    def format_time(self, t):
-        t //= 1000
-        mm = t//60
-        ss = t%60
-        return "{:02}:{:02}".format(mm,ss)
-
-    def progress(self, player):
-        return "{} / {} [{}]".format(self.format_time(player.get_time()), 
-                                     self.format_time(player.get_length()),
-                                     player.get_state())
-
-    def play(self, video, index=None, playlist=None):
-        ## -- stream --
-        #self.stdscr.clear()
-        #self.stdscr.border(0)
-        #self.stdscr.addstr(5, 5, "Video: " + video.title, curses.A_BOLD)
-        #for idx, stream in enumerate(video.streams):
-        #    self.stdscr.addstr(7+idx, 5, self.format_stream(idx, stream), curses.A_NORMAL)
-
-        #idx = int(self.input(curses.LINES-5, 5, "Select stream:"))
-        #stream = video.streams[idx]
-        stream = video.getbest()
-
-        #import os
-        #os.environ['VLC_VERBOSE'] = '-2'
-        instance = vlc.Instance("--vout=dummy")
-        #with open("vlc.log", "w") as f:
-        #    instance.log_set_file(f)
-        instance.log_unset()
-        player = instance.media_player_new()
-        media = instance.media_new(stream.url)
-        player.set_media(media)
-        player.play()
-
-        curses.halfdelay(10)    # blocks for 1s
-        while player.get_state() != vlc.State.Ended:
-            self.stdscr.clear()
-            self.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
-            self.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
-            self.stdscr.addstr(7, 5, self.progress(player), curses.A_NORMAL)
-            if playlist is not None:
-                for idx, p in enumerate(playlist['items']):
-                    if idx == 8:
-                        break
-                    self.stdscr.addstr(9+idx, 5, p['pafy'].title, (curses.A_BOLD if index == idx else curses.A_NORMAL))
-            self.stdscr.refresh()
-
-            try:
-                ch = self.stdscr.getch()
-                if ch == ord('q'):
-                    break
-                elif ch == ord(' '):
-                    if player.get_state() != vlc.State.Paused:
-                        player.pause()
-                    else:
-                        player.play()
-            except:
-                pass
-
-        player.stop()
-
-    def main(self):
+    def main(self, scene_graph):
         self.stdscr.clear()
 
-        # -- search --
-        self.stdscr.border(0)
-        self.stdscr.addstr(5, 5, "Welcome to youtube-pl!", curses.A_BOLD)
-        query = self.input(curses.LINES-5, 5, "Search:")
-        if query == b"q":
-            self.quit = True
-            return
-        search = uyts.Search(query)
+        state = State.WELCOME
+        args = None
+        while state != State.EXIT:
+            scene = scene_graph[state]
+            state, args = scene.play(args)
 
-        # -- video --
-        self.stdscr.clear()
-        self.stdscr.border(0)
-        self.stdscr.addstr(5, 5, b"Search: " + query, curses.A_BOLD)
-        for idx, result in enumerate(search.results):
-            self.stdscr.addstr(7+idx, 5, self.format_result(idx, result), curses.A_NORMAL)
-
-        idx = int(self.input(curses.LINES-5, 5, "Select video:"))
-        if search.results[idx].resultType == 'video':
-            url = "https://www.youtube.com/watch?v=" + search.results[idx].id
-            video = pafy.new(url)
-            self.play(video)
-        elif search.results[idx].resultType == 'playlist':
-            url = "https://www.youtube.com/playlist?list=" + search.results[idx].id
-            playlist = pafy.get_playlist(url)
-            for idx, p in enumerate(playlist['items']):
-                self.play(p['pafy'], index=idx, playlist=playlist)
-
-    def run(self):
+    def run(self, scene_graph):
         self.setup()
         while not self.quit:
-            self.main()
+            self.main(scene_graph)
         self.cleanup()
 
 if __name__ == "__main__":
     ui = curses.wrapper(UI)
-    ui.run()
+    ui.run({
+        State.EXIT: None,
+        State.WELCOME: WelcomeScene(ui),
+        State.SELECT_MEDIA: SelectMediaScene(ui),
+        State.PLAY_MEDIA: PlayMediaScene(ui)
+    })
