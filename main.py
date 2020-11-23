@@ -96,6 +96,9 @@ class PlayMediaScene(Scene):
                                   font)
 
     def playlist_turn_page(self, playlist, n):
+        if playlist is None:
+            return
+
         self.playlist_idx += n * self.playlist_show_count
         if self.playlist_idx < 0:
             self.playlist_idx = 0
