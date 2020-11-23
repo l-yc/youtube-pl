@@ -72,6 +72,13 @@ class PlayMediaScene(Scene):
                                      self.format_time(player.get_length()),
                                      player.get_state())
 
+    def draw_playlist(self, index, playlist):
+        if playlist is not None:
+            for idx, p in enumerate(playlist['items']):
+                if idx == 8:
+                    break
+                self.ui.stdscr.addstr(9+idx, 5, p['pafy'].title, (curses.A_BOLD if index == idx else curses.A_NORMAL))
+
     def playVideo(self, video, index=None, playlist=None):
         ## -- stream --
         #self.ui.stdscr.clear()
@@ -95,24 +102,28 @@ class PlayMediaScene(Scene):
         player.set_media(media)
         player.play()
 
-        return_state = None
+        return_state = State.PLAY_MEDIA_NEXT    # default state if video finishes playing
         curses.halfdelay(10)    # blocks for 1s
         while player.get_state() != vlc.State.Ended:
             self.ui.stdscr.clear()
             self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
             self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
             self.ui.stdscr.addstr(7, 5, self.progress(player), curses.A_NORMAL)
-            if playlist is not None:
-                for idx, p in enumerate(playlist['items']):
-                    if idx == 8:
-                        break
-                    self.ui.stdscr.addstr(9+idx, 5, p['pafy'].title, (curses.A_BOLD if index == idx else curses.A_NORMAL))
+
+            self.draw_playlist(index, playlist)
+
             self.ui.stdscr.refresh()
 
             try:
                 ch = self.ui.stdscr.getch()
                 if ch == ord('q'):
                     return_state = State.WELCOME
+                    break
+                elif ch == ord('N'):
+                    return_state = State.PLAY_MEDIA_PREV
+                    break
+                elif ch == ord('n'):
+                    return_state = State.PLAY_MEDIA_NEXT
                     break
                 elif ch == ord(' '):
                     if player.get_state() != vlc.State.Paused:
@@ -134,12 +145,23 @@ class PlayMediaScene(Scene):
         elif media.resultType == 'playlist':
             url = "https://www.youtube.com/playlist?list=" + media.id
             playlist = pafy.get_playlist(url)
-            for idx, p in enumerate(playlist['items']):
-                return_state = self.playVideo(p['pafy'], index=idx, playlist=playlist)
-                if return_state is not None:
-                    break
+            items = playlist['items']
 
-        if return_state is None:
+            idx = 0
+            p = None
+            while idx < len(items):
+                p = items[idx]
+                return_state = self.playVideo(p['pafy'], index=idx, playlist=playlist)
+                if return_state == State.PLAY_MEDIA_PREV:
+                    idx -= 1
+                elif return_state == State.PLAY_MEDIA_NEXT:
+                    idx += 1
+                elif return_state == State.WELCOME:
+                    break
+                else:
+                    raise "Unknown state in player!"
+
+        if return_state is State.PLAY_MEDIA_NEXT:
             return_state = State.WELCOME
 
         return return_state, ()
@@ -150,6 +172,8 @@ class State(enum.Enum):
     WELCOME = enum.auto()
     SELECT_MEDIA = enum.auto()
     PLAY_MEDIA = enum.auto()
+    PLAY_MEDIA_PREV = enum.auto()
+    PLAY_MEDIA_NEXT = enum.auto()
 
 class UI:
     def __init__(self, stdscr):
@@ -189,8 +213,7 @@ class UI:
 
     def run(self, scene_graph):
         self.setup()
-        while not self.quit:
-            self.main(scene_graph)
+        self.main(scene_graph)
         self.cleanup()
 
 if __name__ == "__main__":
