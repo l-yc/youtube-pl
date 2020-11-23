@@ -58,6 +58,10 @@ class SelectMediaScene(Scene):
         return State.PLAY_MEDIA, (media,)
 
 class PlayMediaScene(Scene):
+    def __init__(self, ui):
+        super().__init__(ui)
+        self.playlist_show_count = 8
+
     def format_stream(self, idx, stream):
         return "{:2}: {} [{}]".format(idx, stream.mediatype, stream.quality)
 
@@ -73,11 +77,32 @@ class PlayMediaScene(Scene):
                                      player.get_state())
 
     def draw_playlist(self, index, playlist):
-        if playlist is not None:
-            for idx, p in enumerate(playlist['items']):
-                if idx == 8:
-                    break
-                self.ui.stdscr.addstr(9+idx, 5, p['pafy'].title, (curses.A_BOLD if index == idx else curses.A_NORMAL))
+        if playlist is None:
+            return
+
+        show = slice(self.playlist_idx, self.playlist_idx+self.playlist_show_count)
+
+        display_str =  "Playlist [{}-{}] / {}:".format(
+            self.playlist_idx+1,
+            min(len(playlist['items']), self.playlist_idx+self.playlist_show_count),
+            len(playlist['items'])
+        )
+        self.ui.stdscr.addstr(9, 5, display_str, curses.A_NORMAL)
+
+        for idx, p in enumerate(playlist['items'][show]):
+            font = (curses.A_BOLD if index == self.playlist_idx+idx else curses.A_NORMAL)
+            self.ui.stdscr.addstr(10+idx, 5,
+                                  p['pafy'].title,
+                                  font)
+
+    def playlist_turn_page(self, playlist, n):
+        self.playlist_idx += n * self.playlist_show_count
+        if self.playlist_idx < 0:
+            self.playlist_idx = 0
+        elif self.playlist_idx >= len(playlist['items']):
+            self.playlist_idx = \
+                (len(playlist['items'])-1) // self.playlist_show_count \
+                * self.playlist_show_count
 
     def playVideo(self, video, index=None, playlist=None):
         ## -- stream --
@@ -125,6 +150,10 @@ class PlayMediaScene(Scene):
                 elif ch == ord('n'):
                     return_state = State.PLAY_MEDIA_NEXT
                     break
+                elif ch == ord('['):
+                    self.playlist_turn_page(playlist, -1)
+                elif ch == ord(']'):
+                    self.playlist_turn_page(playlist, +1)
                 elif ch == ord(' '):
                     if player.get_state() != vlc.State.Paused:
                         player.pause()
@@ -137,6 +166,8 @@ class PlayMediaScene(Scene):
         return return_state
 
     def play(self, args):
+        self.playlist_idx = 0
+
         media = args[0]
         if media.resultType == 'video':
             url = "https://www.youtube.com/watch?v=" + media.id
