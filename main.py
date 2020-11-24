@@ -3,10 +3,10 @@
 import uyts
 import pafy
 import vlc
+import pypresence
+
 import time
-
 import curses
-
 import enum
 
 class Scene:
@@ -27,6 +27,7 @@ class Scene:
 
 class WelcomeScene(Scene):
     def play(self, args):
+        self.ui.update_status(state="Searching for a song...")
         self.ui.stdscr.clear()
         # -- search --
         self.ui.stdscr.border(0)
@@ -46,6 +47,7 @@ class SelectMediaScene(Scene):
         query = args[0]
         search = args[1]
 
+        self.ui.update_status(state="Searching for a song...")
         self.ui.stdscr.clear()
         # -- video --
         self.ui.stdscr.border(0)
@@ -133,6 +135,7 @@ class PlayMediaScene(Scene):
         return_state = State.PLAY_MEDIA_NEXT    # default state if video finishes playing
         curses.halfdelay(10)    # blocks for 1s
         while player.get_state() != vlc.State.Ended:
+            self.ui.update_status(state=video.title)
             self.ui.stdscr.clear()
             self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
             self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
@@ -215,6 +218,10 @@ class UI:
             self.stdscr = stdscr
         self.quit = False
 
+        self.client_id = "780606362727874570"  # Put your Client ID in here
+        self.RPC = None
+        self.display_status = False
+
     def setup(self):
         if self.stdscr is None:
             self.stdscr = curses.initscr()
@@ -235,6 +242,21 @@ class UI:
         val = self.stdscr.getstr(r + 1, c, 20)
         curses.noecho()
         return val
+
+    def update_status(self, state):
+        if not self.display_status:
+            return
+        if self.RPC is None:
+            try:
+                self.RPC = pypresence.Presence(self.client_id)  # Initialize the Presence client
+                self.RPC.connect() # Start the handshake loop
+                self.RPC.update(state=state)
+                self.update_time = time.time()
+            except:
+                self.RPC = None
+        elif self.update_time + 15 < time.time():
+            self.RPC.update(state=state)
+            self.update_time = time.time()
 
     def main(self, scene_graph):
         self.stdscr.clear()
