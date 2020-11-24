@@ -1,4 +1,8 @@
+[![pypresence](https://img.shields.io/badge/using-pypresence-00bb88.svg?style=for-the-badge&logo=discord&logoWidth=20)](https://github.com/qwertyquerty/pypresence)
+
 # youtube-pl
+
+A terminal based client for youtube
 
 ## Running
 ```sh
@@ -10,6 +14,8 @@ python main.py
 - [ ] Add jumping in playlists
 - [ ] Add config file
 - [ ] Show video optionally
+- [x] Add discord rich presence
+- [ ] Upgrade to discord game activity
 
 ## User Guide
 
