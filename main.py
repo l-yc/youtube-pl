@@ -9,6 +9,17 @@ import time
 import curses
 import enum
 
+class Scraper:
+    """ Wrapper around scraper backends """
+    def __init__(self):
+        pass
+
+    def search(self, query):
+        results = uyts.Search(query)
+        return results
+
+
+
 class Scene:
     def __init__(self, UI):
         self.ui = UI
@@ -25,6 +36,8 @@ class Scene:
     def play(self, args):
         pass
 
+
+
 class WelcomeScene(Scene):
     def play(self, args):
         self.ui.update_status(state="Searching for a song...")
@@ -35,8 +48,10 @@ class WelcomeScene(Scene):
         query = self.ui.input(curses.LINES-5, 5, "Search:", 100)
         if query == b"q":
             return State.EXIT, ()
-        search = uyts.Search(query)
+        search = self.ui.scraper.search(query)
         return State.SELECT_MEDIA, (query, search,)
+
+
 
 class SelectMediaScene(Scene):
     def format_result(self, idx, result):
@@ -58,6 +73,8 @@ class SelectMediaScene(Scene):
         idx = int(self.ui.input(curses.LINES-5, 5, "Select video:", 5))
         media = search.results[idx] 
         return State.PLAY_MEDIA, (media,)
+
+
 
 class PlayMediaScene(Scene):
     def __init__(self, ui):
@@ -203,6 +220,8 @@ class PlayMediaScene(Scene):
 
         return return_state, ()
 
+
+
 @enum.unique
 class State(enum.Enum):
     EXIT = enum.auto()
@@ -217,6 +236,8 @@ class UI:
         if stdscr is not None:
             self.stdscr = stdscr
         self.quit = False
+
+        self.scraper = Scraper()
 
         self.client_id = "780606362727874570"  # Put your Client ID in here
         self.RPC = None
@@ -271,6 +292,8 @@ class UI:
         self.setup()
         self.main(scene_graph)
         self.cleanup()
+
+
 
 if __name__ == "__main__":
     ui = curses.wrapper(UI)
