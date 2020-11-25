@@ -32,7 +32,7 @@ class WelcomeScene(Scene):
         # -- search --
         self.ui.stdscr.border(0)
         self.ui.stdscr.addstr(5, 5, "Welcome to youtube-pl!", curses.A_BOLD)
-        query = self.ui.input(curses.LINES-5, 5, "Search:")
+        query = self.ui.input(curses.LINES-5, 5, "Search:", 100)
         if query == b"q":
             return State.EXIT, ()
         search = uyts.Search(query)
@@ -55,7 +55,7 @@ class SelectMediaScene(Scene):
         for idx, result in enumerate(search.results):
             self.ui.stdscr.addstr(7+idx, 5, self.format_result(idx, result), curses.A_NORMAL)
 
-        idx = int(self.ui.input(curses.LINES-5, 5, "Select video:"))
+        idx = int(self.ui.input(curses.LINES-5, 5, "Select video:", 5))
         media = search.results[idx] 
         return State.PLAY_MEDIA, (media,)
 
@@ -235,11 +235,11 @@ class UI:
         curses.echo()
         curses.endwin()
 
-    def input(self, r, c, prompt_string):
+    def input(self, r, c, prompt_string, n):
         curses.echo()
         self.stdscr.addstr(r, c, prompt_string)
         self.stdscr.refresh()
-        val = self.stdscr.getstr(r + 1, c, 20)
+        val = self.stdscr.getstr(r + 1, c, n)
         curses.noecho()
         return val
 
