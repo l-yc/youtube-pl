@@ -20,6 +20,17 @@ class Scraper:
 
 
 
+@enum.unique
+class State(enum.Enum):
+    EXIT = enum.auto()
+    SEARCH = enum.auto()
+    SELECT_MEDIA = enum.auto()
+    PLAY_MEDIA = enum.auto()
+    PLAY_MEDIA_PREV = enum.auto()
+    PLAY_MEDIA_NEXT = enum.auto()
+
+
+
 class Scene:
     def __init__(self, UI):
         self.ui = UI
@@ -70,9 +81,11 @@ class SelectMediaScene(Scene):
         for idx, result in enumerate(search.results):
             self.ui.stdscr.addstr(7+idx, 5, self.format_result(idx, result), curses.A_NORMAL)
 
-        idx = int(self.ui.input(curses.LINES-5, 5, "Select video:", 5))
+        inputs = self.ui.input(curses.LINES-5, 5, "Select audio/video ([pa/pv] <idx>):", 5).strip().split(b' ')
+        audio_only = inputs[0] == b"pa"
+        idx = int(inputs[1])
         media = search.results[idx] 
-        return State.PLAY_MEDIA, (media,)
+        return State.PLAY_MEDIA, (media, audio_only)
 
 
 
@@ -126,7 +139,7 @@ class PlayMediaScene(Scene):
                 (len(playlist['items'])-1) // self.playlist_show_count \
                 * self.playlist_show_count
 
-    def playVideo(self, video, index=None, playlist=None):
+    def playVideo(self, video, audio_only=True, index=None, playlist=None):
         ## -- stream --
         #self.ui.stdscr.clear()
         #self.ui.stdscr.border(0)
@@ -136,11 +149,15 @@ class PlayMediaScene(Scene):
 
         #idx = int(self.ui.input(curses.LINES-5, 5, "Select stream:"))
         #stream = video.streams[idx]
-        stream = video.getbest()
+        if audio_only:
+            stream = video.getbestaudio()
+        else: # both audio and video
+            stream = video.getbest()
 
         #import os
         #os.environ['VLC_VERBOSE'] = '-2'
-        instance = vlc.Instance("--vout=dummy")
+        #instance = vlc.Instance("--vout=dummy")
+        instance = vlc.Instance()
         #with open("vlc.log", "w") as f:
         #    instance.log_set_file(f)
         instance.log_unset()
@@ -165,7 +182,7 @@ class PlayMediaScene(Scene):
             try:
                 ch = self.ui.stdscr.getch()
                 if ch == ord('q'):
-                    return_state = State.WELCOME
+                    return_state = State.SEARCH
                     break
                 elif ch == ord('N'):
                     return_state = State.PLAY_MEDIA_PREV
@@ -192,10 +209,11 @@ class PlayMediaScene(Scene):
         self.playlist_idx = 0
 
         media = args[0]
+        audio_only = args[1]
         if media.resultType == 'video':
             url = "https://www.youtube.com/watch?v=" + media.id
             video = pafy.new(url)
-            return_state = self.playVideo(video)
+            return_state = self.playVideo(video, audio_only)
         elif media.resultType == 'playlist':
             url = "https://www.youtube.com/playlist?list=" + media.id
             playlist = pafy.get_playlist(url)
@@ -205,31 +223,22 @@ class PlayMediaScene(Scene):
             p = None
             while idx < len(items):
                 p = items[idx]
-                return_state = self.playVideo(p['pafy'], index=idx, playlist=playlist)
+                return_state = self.playVideo(p['pafy'], audio_only=audio_only, index=idx, playlist=playlist)
                 if return_state == State.PLAY_MEDIA_PREV:
                     idx -= 1
                 elif return_state == State.PLAY_MEDIA_NEXT:
                     idx += 1
-                elif return_state == State.WELCOME:
+                elif return_state == State.SEARCH:
                     break
                 else:
                     raise "Unknown state in player!"
 
         if return_state is State.PLAY_MEDIA_NEXT:
-            return_state = State.WELCOME
+            return_state = State.SEARCH
 
         return return_state, ()
 
 
-
-@enum.unique
-class State(enum.Enum):
-    EXIT = enum.auto()
-    WELCOME = enum.auto()
-    SELECT_MEDIA = enum.auto()
-    PLAY_MEDIA = enum.auto()
-    PLAY_MEDIA_PREV = enum.auto()
-    PLAY_MEDIA_NEXT = enum.auto()
 
 class UI:
     def __init__(self, stdscr):
@@ -241,7 +250,7 @@ class UI:
 
         self.client_id = "780606362727874570"  # Put your Client ID in here
         self.RPC = None
-        self.display_status = False
+        self.display_status = True
 
     def setup(self):
         if self.stdscr is None:
@@ -282,7 +291,7 @@ class UI:
     def main(self, scene_graph):
         self.stdscr.clear()
 
-        state = State.WELCOME
+        state = State.SEARCH
         args = None
         while state != State.EXIT:
             scene = scene_graph[state]
@@ -299,7 +308,7 @@ if __name__ == "__main__":
     ui = curses.wrapper(UI)
     ui.run({
         State.EXIT: None,
-        State.WELCOME: WelcomeScene(ui),
+        State.SEARCH: WelcomeScene(ui),
         State.SELECT_MEDIA: SelectMediaScene(ui),
         State.PLAY_MEDIA: PlayMediaScene(ui)
     })
