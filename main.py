@@ -28,6 +28,7 @@ class Scraper:
 @enum.unique
 class State(enum.Enum):
     EXIT = enum.auto()
+    BACK = enum.auto()
     SEARCH = enum.auto()
     SELECT_MEDIA = enum.auto()
     PLAY_MEDIA = enum.auto()
@@ -196,52 +197,59 @@ class PlayMediaScene(Scene):
         else: # both audio and video
             stream = video.getbest()
 
-        instance = vlc.Instance()
-        instance.log_unset()
-        self.player = instance.media_player_new()
-        media = instance.media_new(stream.url)
-        self.player.set_media(media)
-        self.player.play()
-
-        return_state = State.PLAY_MEDIA_NEXT    # default state if video finishes playing
+        return_state = None
         curses.halfdelay(10)    # blocks for 1s
-        while self.player.get_state() != vlc.State.Ended:
-            self.ui.update_status(state=video.title)
-            self.ui.stdscr.clear()
-            self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
-            self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
-            self.ui.stdscr.addstr(7, 5, self.progress(), curses.A_NORMAL)
+        while return_state is None:
+            instance = vlc.Instance()
+            instance.log_unset()
+            self.player = instance.media_player_new()
+            media = instance.media_new(stream.url)
+            self.player.set_media(media)
+            self.player.play()
 
-            self.draw_playlist(index, playlist)
+            while self.player.get_state() != vlc.State.Ended:
+                self.ui.update_status(state=video.title)
+                self.ui.stdscr.clear()
+                self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
+                self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
+                self.ui.stdscr.addstr(7, 5, self.progress(), curses.A_NORMAL)
 
-            self.ui.stdscr.refresh()
+                self.draw_playlist(index, playlist)
 
-            try:
-                ch = self.ui.stdscr.getch()
-                if ch == ord('q'):
-                    return_state = State.SEARCH
-                    break
-                elif ch == ord('N'):
-                    return_state = State.PLAY_MEDIA_PREV
-                    break
-                elif ch == ord('n'):
-                    return_state = State.PLAY_MEDIA_NEXT
-                    break
-                elif ch == ord('R'):
-                    self.player_status.update_repeat(-1)
-                elif ch == ord('r'):
-                    self.player_status.update_repeat(+1)
-                elif ch == ord('['):
-                    self.playlist_turn_page(playlist, -1)
-                elif ch == ord(']'):
-                    self.playlist_turn_page(playlist, +1)
-                elif ch == ord(' '):
-                    if self.player.get_state() != vlc.State.Paused:
-                        self.player.pause()
-                    else:
-                        self.player.play()
-            except Exception as e:
-                log_error(e)
+                self.ui.stdscr.refresh()
+
+                try:
+                    ch = self.ui.stdscr.getch()
+                    if ch == ord('q'):
+                        return_state = State.BACK
+                        break
+                    elif ch == ord('N'):
+                        return_state = State.PLAY_MEDIA_PREV
+                        break
+                    elif ch == ord('n'):
+                        return_state = State.PLAY_MEDIA_NEXT
+                        break
+                    elif ch == ord('R'):
+                        self.player_status.update_repeat(-1)
+                    elif ch == ord('r'):
+                        self.player_status.update_repeat(+1)
+                    elif ch == ord('['):
+                        self.playlist_turn_page(playlist, -1)
+                    elif ch == ord(']'):
+                        self.playlist_turn_page(playlist, +1)
+                    elif ch == ord(' '):
+                        if self.player.get_state() != vlc.State.Paused:
+                            self.player.pause()
+                        else:
+                            self.player.play()
+                except Exception as e:
+                    log_error(e)
+
+            if self.player_status.repeat != Status.REPEAT.ONE:
+                break
+
+        if return_state is None:
+            return_state = State.PLAY_MEDIA_NEXT    # default state if video finishes playing
 
         self.player.stop()
         return return_state
@@ -251,37 +259,42 @@ class PlayMediaScene(Scene):
 
         media = args[0]
         audio_only = args[1]
+        return_state = None
         if media.resultType == 'video':
             url = "https://www.youtube.com/watch?v=" + media.id
             video = pafy.new(url)
-            return_state = self.play_video(video, audio_only)
+            while return_state != State.BACK:
+                return_state = self.play_video(video, audio_only)
+                if self.player_status.repeat == Status.REPEAT.NONE:
+                    return_state = State.BACK
         elif media.resultType == 'playlist':
             url = "https://www.youtube.com/playlist?list=" + media.id
             playlist = pafy.get_playlist(url)
             items = playlist['items']
 
             idx = 0
-            p = None
-            while idx < len(items):
-                p = items[idx]
-                return_state = self.play_video(
-                    p['pafy'],
-                    audio_only=audio_only,
-                    index=idx,
-                    playlist=playlist
-                )
-                if return_state == State.PLAY_MEDIA_PREV:
-                    idx -= 1
-                elif return_state == State.PLAY_MEDIA_NEXT:
-                    idx += 1
-                elif return_state == State.SEARCH:
-                    break
-                else:
-                    raise "Unknown state in player!"
+            while return_state != State.BACK:
+                while idx < len(items):
+                    p = items[idx]
+                    return_state = self.play_video(
+                        p['pafy'],
+                        audio_only=audio_only,
+                        index=idx,
+                        playlist=playlist
+                    )
+                    if return_state == State.PLAY_MEDIA_PREV:
+                        idx = max(0, idx-1)
+                    elif return_state == State.PLAY_MEDIA_NEXT:
+                        idx = min(len(items)-1, idx+1)
+                    elif return_state == State.BACK:
+                        break
+                    else:
+                        raise "Unknown state in player!"
 
-        if return_state is State.PLAY_MEDIA_NEXT:
-            return_state = State.SEARCH
+                if self.player_status.repeat == Status.REPEAT.NONE:
+                    return_state = State.BACK
 
+        return_state = State.BACK
         return return_state, ()
 
 
