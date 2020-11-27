@@ -16,6 +16,11 @@ python main.py
 - [ ] Show video optionally
 - [x] Add discord rich presence
 - [ ] Upgrade to discord game activity
+- [ ] Add play queue
+- [ ] Abstract playback into a player class
+- [ ] Ensure scenes are purely UI glues
+- [ ] Universal command line
+- [x] Add repeating
 
 ## User Guide
 
@@ -26,13 +31,16 @@ enter `q` to quit
 
 ##### Media selection screen
 
-enter number of video
+enter `pa <number of video>` to play both audio only
+enter `pv <number of video>` to play both audio and video
 
-##### Media selection screen
+##### Media playback screen
 
 Hotkeys:
 * `q`: quit to search screen
 * `n`: next song
 * `N`: previous song
+* `r`: next repeat mode (in order: NONE, ALL, ONE)
+* `R`: previous repeat mode
 * `[`: scroll to previous page of playlist
 * `]`: scroll to next page of playlist
