@@ -1,13 +1,18 @@
 #!/usr/bin/python3
 
+import time
+import curses
+import enum
+
 import uyts
 import pafy
 import vlc
 import pypresence
 
-import time
-import curses
-import enum
+def log_error(e):
+    with open('error.log','a') as f:
+        f.write(str(e))
+
 
 class Scraper:
     """ Wrapper around scraper backends """
@@ -56,9 +61,14 @@ class WelcomeScene(Scene):
         # -- search --
         self.ui.stdscr.border(0)
         self.ui.stdscr.addstr(5, 5, "Welcome to youtube-pl!", curses.A_BOLD)
-        query = self.ui.input(curses.LINES-5, 5, "Search:", 100)
-        if query == b"q":
-            return State.EXIT, ()
+        while True:
+            query = self.ui.input(curses.LINES-5, 5, "Search:", 100)
+            if query == b"q":
+                return State.EXIT, ()
+            if query != b"":
+                break
+            self.ui.stdscr.addstr(curses.LINES-6, 5, "Query cannot be empty", curses.A_NORMAL)
+
         search = self.ui.scraper.search(query)
         return State.SELECT_MEDIA, (query, search,)
 
@@ -81,10 +91,17 @@ class SelectMediaScene(Scene):
         for idx, result in enumerate(search.results):
             self.ui.stdscr.addstr(7+idx, 5, self.format_result(idx, result), curses.A_NORMAL)
 
-        inputs = self.ui.input(curses.LINES-5, 5, "Select audio/video ([pa/pv] <idx>):", 5).strip().split(b' ')
-        audio_only = inputs[0] == b"pa"
-        idx = int(inputs[1])
-        media = search.results[idx] 
+        while True:
+            try:
+                inputs = self.ui.input(curses.LINES-5, 5, "Select audio/video ([pa/pv] <idx>):", 5).strip().split(b' ')
+                audio_only = inputs[0] == b"pa"
+                idx = int(inputs[1])
+                media = search.results[idx] 
+                break
+            except (IndexError, ValueError):
+                self.ui.stdscr.addstr(curses.LINES-6, 5, "Invalid input")
+                self.ui.stdscr.addstr(curses.LINES-4, 5, " " * (curses.COLS-10))
+
         return State.PLAY_MEDIA, (media, audio_only)
 
 
@@ -106,7 +123,7 @@ class Status:
     def update_repeat(self, x):
         cls = self.__class__
         self.repeat = cls.REPEAT((self.repeat.value + x) % cls.REPEAT._LENGTH.value)
-    
+
 
     def get_repeat(self):
         return ("", "R", "R!")[self.repeat]
@@ -162,16 +179,18 @@ class PlayMediaScene(Scene):
                 (len(playlist['items'])-1) // self.playlist_show_count \
                 * self.playlist_show_count
 
-    def play_video(self, video, audio_only=True, index=None, playlist=None):
-        ## -- stream --
-        #self.ui.stdscr.clear()
-        #self.ui.stdscr.border(0)
-        #self.ui.stdscr.addstr(5, 5, "Video: " + video.title, curses.A_BOLD)
-        #for idx, stream in enumerate(video.streams):
-        #    self.ui.stdscr.addstr(7+idx, 5, self.format_stream(idx, stream), curses.A_NORMAL)
+    def select_stream(self, video):
+        # -- stream --
+        self.ui.stdscr.clear()
+        self.ui.stdscr.border(0)
+        self.ui.stdscr.addstr(5, 5, "Video: " + video.title, curses.A_BOLD)
+        for idx, stream in enumerate(video.streams):
+            self.ui.stdscr.addstr(7+idx, 5, self.format_stream(idx, stream), curses.A_NORMAL)
 
-        #idx = int(self.ui.input(curses.LINES-5, 5, "Select stream:"))
-        #stream = video.streams[idx]
+        idx = int(self.ui.input(curses.LINES-5, 5, "Select stream:"))
+        stream = video.streams[idx]
+
+    def play_video(self, video, audio_only=True, index=None, playlist=None):
         if audio_only:
             stream = video.getbestaudio()
         else: # both audio and video
@@ -222,8 +241,7 @@ class PlayMediaScene(Scene):
                     else:
                         self.player.play()
             except Exception as e:
-                with open('test.log','a') as f:
-                    f.write(str(e))
+                log_error(e)
 
         self.player.stop()
         return return_state
@@ -246,7 +264,12 @@ class PlayMediaScene(Scene):
             p = None
             while idx < len(items):
                 p = items[idx]
-                return_state = self.play_video(p['pafy'], audio_only=audio_only, index=idx, playlist=playlist)
+                return_state = self.play_video(
+                    p['pafy'],
+                    audio_only=audio_only,
+                    index=idx,
+                    playlist=playlist
+                )
                 if return_state == State.PLAY_MEDIA_PREV:
                     idx -= 1
                 elif return_state == State.PLAY_MEDIA_NEXT:
@@ -321,9 +344,13 @@ class UI:
             state, args = scene.play(args)
 
     def run(self, scene_graph):
-        self.setup()
-        self.main(scene_graph)
-        self.cleanup()
+        try:
+            self.setup()
+            self.main(scene_graph)
+        except Exception as e:
+            log_error(e)
+        finally:
+            self.cleanup()
 
 
 
