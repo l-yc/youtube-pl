@@ -89,9 +89,32 @@ class SelectMediaScene(Scene):
 
 
 
+class Status:
+    @enum.unique
+    class REPEAT(enum.Enum):
+        NONE = enum.auto()
+        ALL = enum.auto()
+        ONE = enum.auto()
+        _LENGTH = enum.auto()
+
+
+    def __init__(self, repeat=REPEAT.NONE, shuffle=False):
+        self.repeat = repeat
+        self.shuffle = shuffle
+
+
+    def update_repeat(self, x):
+        cls = self.__class__
+        self.repeat = cls.REPEAT((self.repeat.value + x) % cls.REPEAT._LENGTH.value)
+    
+
+    def get_repeat(self):
+        return ("", "R", "R!")[self.repeat]
+
 class PlayMediaScene(Scene):
     def __init__(self, ui):
         super().__init__(ui)
+        self.player_status = Status()
         self.playlist_show_count = 8
 
     def format_stream(self, idx, stream):
@@ -103,10 +126,10 @@ class PlayMediaScene(Scene):
         ss = t%60
         return "{:02}:{:02}".format(mm,ss)
 
-    def progress(self, player):
-        return "{} / {} [{}]".format(self.format_time(player.get_time()), 
-                                     self.format_time(player.get_length()),
-                                     player.get_state())
+    def progress(self):
+        return "{} / {} [{}] [{}]".format(self.format_time(self.player.get_time()), 
+                                     self.format_time(self.player.get_length()),
+                                     self.player.get_state(), self.player_status.repeat)
 
     def draw_playlist(self, index, playlist):
         if playlist is None:
@@ -139,7 +162,7 @@ class PlayMediaScene(Scene):
                 (len(playlist['items'])-1) // self.playlist_show_count \
                 * self.playlist_show_count
 
-    def playVideo(self, video, audio_only=True, index=None, playlist=None):
+    def play_video(self, video, audio_only=True, index=None, playlist=None):
         ## -- stream --
         #self.ui.stdscr.clear()
         #self.ui.stdscr.border(0)
@@ -154,26 +177,21 @@ class PlayMediaScene(Scene):
         else: # both audio and video
             stream = video.getbest()
 
-        #import os
-        #os.environ['VLC_VERBOSE'] = '-2'
-        #instance = vlc.Instance("--vout=dummy")
         instance = vlc.Instance()
-        #with open("vlc.log", "w") as f:
-        #    instance.log_set_file(f)
         instance.log_unset()
-        player = instance.media_player_new()
+        self.player = instance.media_player_new()
         media = instance.media_new(stream.url)
-        player.set_media(media)
-        player.play()
+        self.player.set_media(media)
+        self.player.play()
 
         return_state = State.PLAY_MEDIA_NEXT    # default state if video finishes playing
         curses.halfdelay(10)    # blocks for 1s
-        while player.get_state() != vlc.State.Ended:
+        while self.player.get_state() != vlc.State.Ended:
             self.ui.update_status(state=video.title)
             self.ui.stdscr.clear()
             self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
             self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
-            self.ui.stdscr.addstr(7, 5, self.progress(player), curses.A_NORMAL)
+            self.ui.stdscr.addstr(7, 5, self.progress(), curses.A_NORMAL)
 
             self.draw_playlist(index, playlist)
 
@@ -190,19 +208,24 @@ class PlayMediaScene(Scene):
                 elif ch == ord('n'):
                     return_state = State.PLAY_MEDIA_NEXT
                     break
+                elif ch == ord('R'):
+                    self.player_status.update_repeat(-1)
+                elif ch == ord('r'):
+                    self.player_status.update_repeat(+1)
                 elif ch == ord('['):
                     self.playlist_turn_page(playlist, -1)
                 elif ch == ord(']'):
                     self.playlist_turn_page(playlist, +1)
                 elif ch == ord(' '):
-                    if player.get_state() != vlc.State.Paused:
-                        player.pause()
+                    if self.player.get_state() != vlc.State.Paused:
+                        self.player.pause()
                     else:
-                        player.play()
-            except:
-                pass
+                        self.player.play()
+            except Exception as e:
+                with open('test.log','a') as f:
+                    f.write(str(e))
 
-        player.stop()
+        self.player.stop()
         return return_state
 
     def play(self, args):
@@ -213,7 +236,7 @@ class PlayMediaScene(Scene):
         if media.resultType == 'video':
             url = "https://www.youtube.com/watch?v=" + media.id
             video = pafy.new(url)
-            return_state = self.playVideo(video, audio_only)
+            return_state = self.play_video(video, audio_only)
         elif media.resultType == 'playlist':
             url = "https://www.youtube.com/playlist?list=" + media.id
             playlist = pafy.get_playlist(url)
@@ -223,7 +246,7 @@ class PlayMediaScene(Scene):
             p = None
             while idx < len(items):
                 p = items[idx]
-                return_state = self.playVideo(p['pafy'], audio_only=audio_only, index=idx, playlist=playlist)
+                return_state = self.play_video(p['pafy'], audio_only=audio_only, index=idx, playlist=playlist)
                 if return_state == State.PLAY_MEDIA_PREV:
                     idx -= 1
                 elif return_state == State.PLAY_MEDIA_NEXT:
