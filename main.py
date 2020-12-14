@@ -67,7 +67,7 @@ class WelcomeScene(Scene):
         while True:
             query = self.ui.input(curses.LINES-5, 5, "Search:", 100)
             if query == b"q":
-                return State.EXIT, ()
+                return State.BACK, ()
             if query != b"":
                 break
             self.ui.stdscr.addstr(curses.LINES-6, 5, "Query cannot be empty", curses.A_NORMAL)
@@ -96,7 +96,10 @@ class SelectMediaScene(Scene):
 
         while True:
             try:
-                inputs = self.ui.input(curses.LINES-5, 5, "Select audio/video ([pa/pv] <idx>):", 5).strip().split(b' ')
+                inputs = self.ui.input(curses.LINES-5, 5, "Select audio/video ([pa/pv] <idx>):", 5).strip()
+                if inputs == b"q":
+                    return State.BACK, ()
+                inputs = inputs.split(b' ')
                 audio_only = inputs[0] == b"pa"
                 idx = int(inputs[1])
                 media = search.results[idx] 
@@ -296,8 +299,7 @@ class PlayMediaScene(Scene):
                 if self.player_status.repeat == Status.REPEAT.NONE:
                     return_state = State.BACK
 
-        return_state = State.BACK
-        return return_state, ()
+        return State.BACK, ()
 
 
 
