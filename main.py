@@ -12,6 +12,8 @@ import pypresence
 def log_error(e):
     with open('error.log','a') as f:
         f.write(str(e))
+        import traceback
+        traceback.print_exc(file=f)
 
 
 class Scraper:
@@ -309,7 +311,7 @@ class UI:
 
         self.client_id = "780606362727874570"  # Put your Client ID in here
         self.RPC = None
-        self.display_status = True
+        self.display_status = False
 
     def setup(self):
         if self.stdscr is None:
@@ -350,9 +352,18 @@ class UI:
     def main(self, scene_graph):
         self.stdscr.clear()
 
+        history = []
         state = State.SEARCH
         args = None
         while state != State.EXIT:
+            if state == State.BACK:
+                history.pop()
+                if len(history) == 0:
+                    break
+                else:
+                    state, args = history[-1]
+            else:
+                history.append((state, args))
             scene = scene_graph[state]
             state, args = scene.play(args)
 
