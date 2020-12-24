@@ -140,6 +140,11 @@ class PlayMediaScene(Scene):
         self.player_status = Status()
         self.playlist_show_count = 8
 
+        # setup vlc instance
+        self.vlc_instance = vlc.Instance()
+        self.vlc_instance.log_unset()
+        self.player = self.vlc_instance.media_player_new()
+
     def format_stream(self, idx, stream):
         return "{:2}: {} [{}]".format(idx, stream.mediatype, stream.quality)
 
@@ -205,10 +210,7 @@ class PlayMediaScene(Scene):
         return_state = None
         curses.halfdelay(10)    # blocks for 1s
         while return_state is None:
-            instance = vlc.Instance()
-            instance.log_unset()
-            self.player = instance.media_player_new()
-            media = instance.media_new(stream.url)
+            media = self.vlc_instance.media_new(stream.url)
             self.player.set_media(media)
             self.player.play()
 
