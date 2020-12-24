@@ -279,8 +279,8 @@ class PlayMediaScene(Scene):
             playlist = pafy.get_playlist(url)
             items = playlist['items']
 
-            idx = 0
             while return_state != State.BACK:
+                idx = 0
                 while idx < len(items):
                     p = items[idx]
                     return_state = self.play_video(
@@ -290,15 +290,15 @@ class PlayMediaScene(Scene):
                         playlist=playlist
                     )
                     if return_state == State.PLAY_MEDIA_PREV:
-                        idx = max(0, idx-1)
+                        idx = max(0, idx-1) # cannot go past 1st song
                     elif return_state == State.PLAY_MEDIA_NEXT:
-                        idx = min(len(items)-1, idx+1)
+                        idx += 1
                     elif return_state == State.BACK:
                         break
                     else:
                         raise "Unknown state in player!"
 
-                if self.player_status.repeat == Status.REPEAT.NONE:
+                if self.player_status.repeat != Status.REPEAT.ALL:
                     return_state = State.BACK
 
         return State.BACK, ()
