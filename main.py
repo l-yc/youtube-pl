@@ -4,10 +4,11 @@ import time
 import curses
 import enum
 
-import uyts
 import pafy
 import vlc
 import pypresence
+
+from scraper import Scraper
 
 def log_error(e):
     with open('error.log','a') as f:
@@ -16,14 +17,9 @@ def log_error(e):
         traceback.print_exc(file=f)
 
 
-class Scraper:
-    """ Wrapper around scraper backends """
-    def __init__(self):
-        pass
-
-    def search(self, query):
-        results = uyts.Search(query)
-        return results
+def log_stuff(s):
+    with open('stuff.log','a') as f:
+        f.write(str(s))
 
 
 
@@ -202,26 +198,29 @@ class PlayMediaScene(Scene):
         stream = video.streams[idx]
 
     def play_video(self, video, audio_only=True, index=None, playlist=None):
-        if audio_only:
-            stream = video.getbestaudio()
-        else: # both audio and video
-            stream = video.getbest()
+        #if audio_only:
+        #    stream = video.getbestaudio()
+        #else: # both audio and video
+        #    stream = video.getbest()
+        stream_url = video['formats'][0]['url']
 
         return_state = None
         curses.halfdelay(10)    # blocks for 1s
         while return_state is None:
-            media = self.vlc_instance.media_new(stream.url)
+            #media = self.vlc_instance.media_new(stream.url)
+            media = self.vlc_instance.media_new(stream_url)
             self.player.set_media(media)
             self.player.play()
 
             while self.player.get_state() != vlc.State.Ended:
-                self.ui.update_status(state=video.title)
+                #self.ui.update_status(state=video.title)
                 self.ui.stdscr.clear()
                 self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
-                self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
+                #self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
+                self.ui.stdscr.addstr(6, 5, video['title'], curses.A_NORMAL)
                 self.ui.stdscr.addstr(7, 5, self.progress(), curses.A_NORMAL)
 
-                self.draw_playlist(index, playlist)
+                #self.draw_playlist(index, playlist)
 
                 self.ui.stdscr.refresh()
 
@@ -269,22 +268,30 @@ class PlayMediaScene(Scene):
         return_state = None
         if media.resultType == 'video':
             url = "https://www.youtube.com/watch?v=" + media.id
-            video = pafy.new(url)
+
+            #video = pafy.new(url)
+            video = self.ui.scraper.get_info(url)
+            log_stuff(video)
+
             while return_state != State.BACK:
                 return_state = self.play_video(video, audio_only)
                 if self.player_status.repeat == Status.REPEAT.NONE:
                     return_state = State.BACK
         elif media.resultType == 'playlist':
             url = "https://www.youtube.com/playlist?list=" + media.id
-            playlist = pafy.get_playlist(url)
-            items = playlist['items']
+            playlist = self.ui.scraper.get_info(url)
+            log_stuff(playlist)
+            items = playlist['entries']
+            #playlist = pafy.get_playlist(url)
+            #items = playlist['items']
 
             while return_state != State.BACK:
                 idx = 0
                 while idx < len(items):
                     p = items[idx]
                     return_state = self.play_video(
-                        p['pafy'],
+                        p,
+                        #p['pafy'],
                         audio_only=audio_only,
                         index=idx,
                         playlist=playlist
