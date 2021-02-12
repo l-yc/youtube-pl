@@ -13,7 +13,7 @@ python main.py
 ## TODOs
 - [ ] Add jumping in playlists
 - [ ] Add config file
-- [ ] Show video optionally
+- [x] Show video optionally
 - [x] Add discord rich presence
 - [ ] Upgrade to discord game activity
 - [ ] Add play queue
