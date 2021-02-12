@@ -4,7 +4,6 @@ import time
 import curses
 import enum
 
-import pafy
 import vlc
 import pypresence
 
@@ -38,6 +37,7 @@ class State(enum.Enum):
 class Scene:
     def __init__(self, UI):
         self.ui = UI
+
 
     # TODO parse a user input
     def parse(self, s):
@@ -130,6 +130,8 @@ class Status:
     def get_repeat(self):
         return ("", "R", "R!")[self.repeat]
 
+
+
 class PlayMediaScene(Scene):
     def __init__(self, ui):
         super().__init__(ui)
@@ -141,8 +143,10 @@ class PlayMediaScene(Scene):
         self.vlc_instance.log_unset()
         self.player = self.vlc_instance.media_player_new()
 
+
     def format_stream(self, idx, stream):
         return "{:2}: {} [{}]".format(idx, stream.mediatype, stream.quality)
+
 
     def format_time(self, t):
         t //= 1000
@@ -150,10 +154,12 @@ class PlayMediaScene(Scene):
         ss = t%60
         return "{:02}:{:02}".format(mm,ss)
 
+
     def progress(self):
         return "{} / {} [{}] [{}]".format(self.format_time(self.player.get_time()), 
                                      self.format_time(self.player.get_length()),
                                      self.player.get_state(), self.player_status.repeat)
+
 
     def draw_playlist(self, index, playlist):
         if playlist is None:
@@ -163,16 +169,17 @@ class PlayMediaScene(Scene):
 
         display_str =  "Playlist [{}-{}] / {}:".format(
             self.playlist_idx+1,
-            min(len(playlist['items']), self.playlist_idx+self.playlist_show_count),
-            len(playlist['items'])
+            min(len(playlist.items), self.playlist_idx+self.playlist_show_count),
+            len(playlist.items)
         )
         self.ui.stdscr.addstr(9, 5, display_str, curses.A_NORMAL)
 
-        for idx, p in enumerate(playlist['items'][show]):
+        for idx, video in enumerate(playlist.items[show]):
             font = (curses.A_BOLD if index == self.playlist_idx+idx else curses.A_NORMAL)
             self.ui.stdscr.addstr(10+idx, 5,
-                                  p['pafy'].title,
+                                  video.title,
                                   font)
+
 
     def playlist_turn_page(self, playlist, n):
         if playlist is None:
@@ -181,10 +188,11 @@ class PlayMediaScene(Scene):
         self.playlist_idx += n * self.playlist_show_count
         if self.playlist_idx < 0:
             self.playlist_idx = 0
-        elif self.playlist_idx >= len(playlist['items']):
+        elif self.playlist_idx >= len(playlist.items):
             self.playlist_idx = \
-                (len(playlist['items'])-1) // self.playlist_show_count \
+                (len(playlist.items)-1) // self.playlist_show_count \
                 * self.playlist_show_count
+
 
     def select_stream(self, video):
         # -- stream --
@@ -197,30 +205,28 @@ class PlayMediaScene(Scene):
         idx = int(self.ui.input(curses.LINES-5, 5, "Select stream:"))
         stream = video.streams[idx]
 
+
     def play_video(self, video, audio_only=True, index=None, playlist=None):
-        #if audio_only:
-        #    stream = video.getbestaudio()
-        #else: # both audio and video
-        #    stream = video.getbest()
-        stream_url = video['formats'][0]['url']
+        if audio_only:
+            stream = video.get_best_audio()
+        else: # both audio and video
+            stream = video.get_best()
 
         return_state = None
         curses.halfdelay(10)    # blocks for 1s
         while return_state is None:
-            #media = self.vlc_instance.media_new(stream.url)
-            media = self.vlc_instance.media_new(stream_url)
+            media = self.vlc_instance.media_new(stream.url)
             self.player.set_media(media)
             self.player.play()
 
             while self.player.get_state() != vlc.State.Ended:
-                #self.ui.update_status(state=video.title)
+                self.ui.update_status(state=video.title)
                 self.ui.stdscr.clear()
                 self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
-                #self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
-                self.ui.stdscr.addstr(6, 5, video['title'], curses.A_NORMAL)
+                self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
                 self.ui.stdscr.addstr(7, 5, self.progress(), curses.A_NORMAL)
 
-                #self.draw_playlist(index, playlist)
+                self.draw_playlist(index, playlist)
 
                 self.ui.stdscr.refresh()
 
@@ -260,6 +266,7 @@ class PlayMediaScene(Scene):
         self.player.stop()
         return return_state
 
+
     def play(self, args):
         self.playlist_idx = 0
 
@@ -267,31 +274,22 @@ class PlayMediaScene(Scene):
         audio_only = args[1]
         return_state = None
         if media.resultType == 'video':
-            url = "https://www.youtube.com/watch?v=" + media.id
-
-            #video = pafy.new(url)
-            video = self.ui.scraper.get_info(url)
-            log_stuff(video)
+            video = self.ui.scraper.get_video(media.id)
 
             while return_state != State.BACK:
                 return_state = self.play_video(video, audio_only)
                 if self.player_status.repeat == Status.REPEAT.NONE:
                     return_state = State.BACK
         elif media.resultType == 'playlist':
-            url = "https://www.youtube.com/playlist?list=" + media.id
-            playlist = self.ui.scraper.get_info(url)
-            log_stuff(playlist)
-            items = playlist['entries']
-            #playlist = pafy.get_playlist(url)
-            #items = playlist['items']
+            playlist = self.ui.scraper.get_playlist(media.id)
+            items = playlist.items
 
             while return_state != State.BACK:
                 idx = 0
                 while idx < len(items):
-                    p = items[idx]
+                    video = items[idx]
                     return_state = self.play_video(
-                        p,
-                        #p['pafy'],
+                        video,
                         audio_only=audio_only,
                         index=idx,
                         playlist=playlist
@@ -324,6 +322,7 @@ class UI:
         self.RPC = None
         self.display_status = False
 
+
     def setup(self):
         if self.stdscr is None:
             self.stdscr = curses.initscr()
@@ -331,11 +330,13 @@ class UI:
         curses.cbreak()
         self.stdscr.keypad(True)
 
+
     def cleanup(self):
         curses.nocbreak()
         self.stdscr.keypad(False)
         curses.echo()
         curses.endwin()
+
 
     def input(self, r, c, prompt_string, n):
         curses.echo()
@@ -344,6 +345,7 @@ class UI:
         val = self.stdscr.getstr(r + 1, c, n)
         curses.noecho()
         return val
+
 
     def update_status(self, state):
         if not self.display_status:
@@ -359,6 +361,7 @@ class UI:
         elif self.update_time + 15 < time.time():
             self.RPC.update(state=state)
             self.update_time = time.time()
+
 
     def main(self, scene_graph):
         self.stdscr.clear()
@@ -377,6 +380,7 @@ class UI:
                 history.append((state, args))
             scene = scene_graph[state]
             state, args = scene.play(args)
+
 
     def run(self, scene_graph):
         try:
