@@ -4,6 +4,13 @@
 
 A terminal based client for youtube
 
+## Dependencies
+* youtube-dl
+* unlimited-youtube-search
+* python-vlc
+* pypresence
+`pip install youtube-dl unlimited-youtube-search python-vlc pypresence`
+
 ## Running
 ```sh
 pip install -r requirements.txt
@@ -44,3 +51,5 @@ Hotkeys:
 * `R`: previous repeat mode
 * `[`: scroll to previous page of playlist
 * `]`: scroll to next page of playlist
+* `-`: decrease volume by 5%
+* `+`: increase volume by 5%

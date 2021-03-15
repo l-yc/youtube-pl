@@ -12,7 +12,6 @@ Jinja2==2.11.2
 lazy-object-proxy==1.4.3
 MarkupSafe==1.1.1
 mccabe==0.6.1
-pafy==0.5.5
 pylint==2.6.0
 pypresence==4.0.0
 python-vlc==3.0.11115
@@ -25,4 +24,4 @@ unlimited-youtube-search==0.0.4
 urllib3==1.26.2
 Werkzeug==1.0.1
 wrapt==1.12.1
-youtube-dl==2020.11.24
+youtube-dl==2021.3.14
