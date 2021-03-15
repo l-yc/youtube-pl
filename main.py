@@ -219,12 +219,16 @@ class PlayMediaScene(Scene):
             self.player.set_media(media)
             self.player.play()
 
+            volume = 100    # TODO quickfix default (but configurable volume)
             while self.player.get_state() != vlc.State.Ended:
                 self.ui.update_status(state=video.title)
                 self.ui.stdscr.clear()
                 self.ui.stdscr.addstr(5, 5, "Playing:", curses.A_BOLD)
                 self.ui.stdscr.addstr(6, 5, video.title, curses.A_NORMAL)
                 self.ui.stdscr.addstr(7, 5, self.progress(), curses.A_NORMAL)
+
+                self.ui.stdscr.addstr(9, 5, f"Volume: {volume}%", curses.A_NORMAL)
+                self.player.audio_set_volume(volume)
 
                 self.draw_playlist(index, playlist)
 
@@ -254,6 +258,10 @@ class PlayMediaScene(Scene):
                             self.player.pause()
                         else:
                             self.player.play()
+                    elif ch == ord('-'):
+                        volume = max(0, volume-5)
+                    elif ch == ord('+'):
+                        volume = min(100, volume+5)
                 except Exception as e:
                     log_error(e)
 
